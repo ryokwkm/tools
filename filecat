@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# --- メインの処理を関数として定義 ---
+# 引数として、読み込むべきファイルパスリストを受け取る
+main_process() {
+  local list_file="$1" # 関数内でのみ使う変数として受け取る
+
+  # ファイルリストの存在チェック
+  if [ ! -r "$list_file" ]; then
+    echo "エラー: ファイルリストが見つからないか、読み込めません: $list_file" >&2
+    exit 1
+  fi
+
+  # 相対パスの起点となるディレクトリのリスト
+  local search_dirs=(
+    "another_repository"
+    "project_name_here"
+  )
+
+  local is_first=true
+  while IFS= read -r filepath || [[ -n "$filepath" ]]; do
+    if [ -z "$filepath" ]; then
+      continue
+    fi
+    if [ ! -f "$filepath" ]; then
+      echo "エラー: ファイルが見つかりません: $filepath" >&2
+      continue
+    fi
+
+    if [ "$is_first" = true ]; then
+      is_first=false
+    else
+      echo ""
+      echo "---"
+      echo ""
+    fi
+
+    local relative_path="$filepath"
+    for dir in "${search_dirs[@]}"; do
+      if [[ "$filepath" == *"/$dir/"* ]]; then
+        relative_path=$(echo "$filepath" | sed "s|.*/$dir/||")
+        break
+      fi
+    done
+
+    echo "# $relative_path"
+    echo ""
+    cat "$filepath"
+  done < "$list_file"
+}
+
+
+# --- ★ 変更点: 引数の数に応じて処理を分岐 ---
+if [ $# -eq 1 ]; then
+  # 【引数がある場合】-> 標準出力する
+  input_file="$1"
+  main_process "$input_file"
+
+elif [ $# -eq 0 ]; then
+  # 【引数がない場合】-> ファイルに書き出す
+  input_file="$HOME/source/filecat/filepath.txt"
+  output_file="$HOME/source/filecat/files.txt"
+
+  echo "INFO: 引数が指定されなかったため、デフォルト設定で実行します。"
+  echo "      入力: $input_file"
+  echo "      出力: $output_file"
+
+  # 出力先ディレクトリを作成
+  mkdir -p "$(dirname "$output_file")"
+
+  # 関数の実行結果をファイルにリダイレクト
+  main_process "$input_file" > "$output_file"
+
+  echo "処理が完了しました。"
+
+else
+  # 引数が多すぎる場合
+  echo "エラー: 引数が多すぎます。" >&2
+  echo "使い方: $0 [ファイルパスリストを記載したファイル]" >&2
+  exit 1
+fi
