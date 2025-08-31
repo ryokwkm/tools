@@ -18,39 +18,77 @@ main_process() {
   )
 
   local is_first=true
-  while IFS= read -r filepath || [[ -n "$filepath" ]]; do
-    if [ -z "$filepath" ]; then
-      continue
-    fi
-    if [ ! -f "$filepath" ]; then
-      echo "エラー: ファイルが見つかりません: $filepath" >&2
+  # 入力ファイルから1行ずつパスを読み込む
+  while IFS= read -r input_path || [[ -n "$input_path" ]]; do
+    # 空行はスキップ
+    if [ -z "$input_path" ]; then
       continue
     fi
 
-    if [ "$is_first" = true ]; then
-      is_first=false
+    # 処理対象となるファイルパスを格納する配列
+    declare -a files_to_process
+
+    # input_pathがファイルの場合
+    if [ -f "$input_path" ]; then
+      files_to_process+=("$input_path")
+    # input_pathがディレクトリの場合
+    elif [ -d "$input_path" ]; then
+      # findコマンドでディレクトリ内のファイルを再帰的に検索し、配列に格納
+      while IFS= read -r -d $'\0' file; do
+        files_to_process+=("$file")
+      done < <(find "$input_path" -type f -print0)
+    # どちらでもない（存在しない、または特殊ファイル）場合
     else
-      echo ""
-      echo "---"
-      echo ""
+      echo "エラー: パスが見つからないか、ファイルまたはディレクトリではありません: $input_path" >&2
+      continue
     fi
 
-    local relative_path="$filepath"
-    for dir in "${search_dirs[@]}"; do
-      if [[ "$filepath" == *"/$dir/"* ]]; then
-        relative_path=$(echo "$filepath" | sed "s|.*/$dir/||")
-        break
+    # 処理対象のファイルパス配列をループ
+    for filepath in "${files_to_process[@]}"; do
+      
+      # fileコマンドでファイルのMIMEタイプを取得
+      local mime_type
+      mime_type=$(file -b --mime-type "$filepath")
+
+      # ★★★ 変更点: JSONファイルの例外条件を追加 ★★★
+      # MIMEタイプが "text/" で始まる、または、ファイル名が ".json" で終わる場合
+      if [[ "$mime_type" == text/* || "$filepath" == *.json ]]; then
+        # 最初のファイルでなければ区切り文字を出力
+        if [ "$is_first" = true ]; then
+          is_first=false
+        else
+          echo ""
+          echo "---"
+          echo ""
+        fi
+
+        # 相対パスを計算
+        local relative_path="$filepath"
+        for dir in "${search_dirs[@]}"; do
+          if [[ "$filepath" == *"/$dir/"* ]]; then
+            # マッチしたディレクトリより後の部分を抜き出す
+            relative_path=$(echo "$filepath" | sed "s|.*/$dir/||")
+            break
+          fi
+        done
+
+        # 相対パスとファイル内容を出力
+        echo "# $relative_path"
+        echo ""
+        cat "$filepath"
+      else
+        # テキストファイルでない場合は、スキップしたことを標準エラー出力に通知
+        echo "INFO: バイナリファイルのためスキップします ($mime_type): $filepath" >&2
       fi
+      
     done
 
-    echo "# $relative_path"
-    echo ""
-    cat "$filepath"
   done < "$list_file"
 }
 
 
 # --- ★ 変更点: 引数の数に応じて処理を分岐 ---
+# この部分は変更ありません
 if [ $# -eq 1 ]; then
   # 【引数がある場合】-> 標準出力する
   input_file="$1"
