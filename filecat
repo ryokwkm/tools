@@ -13,7 +13,7 @@ main_process() {
 
   # 相対パスの起点となるディレクトリのリスト
   local search_dirs=(
-    "another_repository"
+    "miidas_go"
     "project_name_here"
   )
 
@@ -45,12 +45,11 @@ main_process() {
 
     # 処理対象のファイルパス配列をループ
     for filepath in "${files_to_process[@]}"; do
-      
+
       # fileコマンドでファイルのMIMEタイプを取得
       local mime_type
       mime_type=$(file -b --mime-type "$filepath")
 
-      # ★★★ 変更点: JSONファイルの例外条件を追加 ★★★
       # MIMEタイプが "text/" で始まる、または、ファイル名が ".json" で終わる場合
       if [[ "$mime_type" == text/* || "$filepath" == *.json ]]; then
         # 最初のファイルでなければ区切り文字を出力
@@ -62,18 +61,20 @@ main_process() {
           echo ""
         fi
 
-        # 相対パスを計算
-        local relative_path="$filepath"
+        # パスを整形
+        local display_path="$filepath"
         for dir in "${search_dirs[@]}"; do
           if [[ "$filepath" == *"/$dir/"* ]]; then
-            # マッチしたディレクトリより後の部分を抜き出す
-            relative_path=$(echo "$filepath" | sed "s|.*/$dir/||")
+            # ★★★ ここが修正箇所です ★★★
+            # マッチしたディレクトリの親ディレクトリからパスを再構築する
+            # 例: /path/to/miidas/miidas_go/file.go -> /miidas/file.go
+            display_path=$(echo "$filepath" | sed -E "s|.*/([^/]+)/$dir/|/\1/|")
             break
           fi
         done
 
-        # 相対パスとファイル内容を出力
-        echo "# $relative_path"
+        # 整形したパスとファイル内容を出力
+        echo "# $display_path"
         echo ""
         cat "$filepath"
       else
